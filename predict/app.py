@@ -154,34 +154,34 @@ class Application:
 
     def run(self):
         with ExitStack() as stack:
-            stack.enter_context(
-                mock.patch("dask.blockwise._fuse_annotations", _fuse_annotations)
-            )
-            stack.enter_context(
-                dask.config.set({
-                    "distributed.scheduler.dashboard.tasks.task-stream-length": sys.maxsize})
-            )
+           if self.args.backend == "dask":
+                stack.enter_context(
+                    mock.patch("dask.blockwise._fuse_annotations", _fuse_annotations)
+                )
+                stack.enter_context(
+                    dask.config.set({
+                        "distributed.scheduler.dashboard.tasks.task-stream-length": sys.maxsize})
+                )
+                logging.info("dask configuration")
+                logging.info(pformat(dask.config.config))
 
-            logging.info("dask configuration")
-            logging.info(pformat(dask.config.config))
+                client = self.get_client(self.args, stack)
 
-            client = self.get_client(self.args, stack)
+                if self.args.plugin == "autorestrictor":
+                    stack.enter_context(dask.config.set(self.PLUGIN_OPTIONS_SCHEDULER_OPTIONS))
+                    client.amm.stop()  # Disable active memory manager
+                    client.run_on_scheduler(install_autorestrictor_plugin)
+                elif self.args.plugin == "pinned":
+                    stack.enter_context(dask.config.set(self.PLUGIN_OPTIONS_SCHEDULER_OPTIONS))
+                    client.amm.stop()  # Disable active memory manager
+                    client.run_on_scheduler(install_pinned_plugin)
+                elif self.args.plugin == "none":
+                    pass
+                else:
+                    raise ValueError(f"Unhandled plugin {self.arg.plugin}")
 
-            if self.args.plugin == "autorestrictor":
-                stack.enter_context(dask.config.set(self.PLUGIN_OPTIONS_SCHEDULER_OPTIONS))
-                client.amm.stop()  # Disable active memory manager
-                client.run_on_scheduler(install_autorestrictor_plugin)
-            elif self.args.plugin == "pinned":
-                stack.enter_context(dask.config.set(self.PLUGIN_OPTIONS_SCHEDULER_OPTIONS))
-                client.amm.stop()  # Disable active memory manager
-                client.run_on_scheduler(install_pinned_plugin)
-            elif self.args.plugin == "none":
-                pass
-            else:
-                raise ValueError(f"Unhandled plugin {self.arg.plugin}")
-
-            logging.info("Waiting for %d workers to be ready", self.args.workers)
-            client.wait_for_workers(self.args.workers)
+                logging.info("Waiting for %d workers to be ready", self.args.workers)
+                client.wait_for_workers(self.args.workers)
 
             logging.info(
                 "Generating sky model of %s sources", self.args.dimensions["source"]
