@@ -154,7 +154,9 @@ class Application:
 
     def run(self):
         with ExitStack() as stack:
-           if self.args.backend == "dask":
+            if self.args.backend == "dask":
+                logging.info("dask configuration")
+                logging.info(pformat(dask.config.config))
                 stack.enter_context(
                     mock.patch("dask.blockwise._fuse_annotations", _fuse_annotations)
                 )
@@ -162,8 +164,6 @@ class Application:
                     dask.config.set({
                         "distributed.scheduler.dashboard.tasks.task-stream-length": sys.maxsize})
                 )
-                logging.info("dask configuration")
-                logging.info(pformat(dask.config.config))
 
                 client = self.get_client(self.args, stack)
 
