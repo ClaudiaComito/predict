@@ -183,14 +183,16 @@ class Application:
                 logging.info("Waiting for %d workers to be ready", self.args.workers)
                 client.wait_for_workers(self.args.workers)
 
+                logging.info("Storing report at %s", self.args.report_prefix)
+                stack.enter_context(performance_report(self.args.report_prefix))
+
+
             logging.info(
                 "Generating sky model of %s sources", self.args.dimensions["source"]
             )
             model = generate_sky_model(self.args)
 
             logging.info("Predicting Visibilities")
-            logging.info("Storing report at %s", self.args.report_prefix)
-            stack.enter_context(performance_report(self.args.report_prefix))
             predict_vis(self.args, model, backend=self.args.backend)
             logging.info("Done")
 
