@@ -19,6 +19,8 @@ from predict.annotations import annotate_datasets, dim_propagator
 import logging
 from predict.sky_model import WSCleanModel
 
+import heat as ht
+
 
 def expand_vis(vis, corrs):
     if corrs == 1:
@@ -138,6 +140,29 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
     elif backend == "heat":
         logging.info("Heat backend selected.")
         # TODO: Implement Heat-based visibility prediction
-        raise NotImplementedError("The Heat backend is not yet implemented.")
+
+        # Ingest sky model and replicate on all processes (split=None)
+        ht_source_type = ht.array(sky_model.source_type, split=None)
+        ht_radec = ht.array(sky_model.radec, split=None)
+        ht_flux = ht.array(sky_model.flux, split=None)
+        ht_spi = ht.array(sky_model.spi, split=None)
+        ht_ref_freq = ht.array(sky_model.ref_freq, split=None)
+        ht_log_poly = ht.array(sky_model.log_poly, split=None)
+        ht_gauss_shape = ht.array(sky_model.gauss_shape, split=None)
+
+        # Read all UVW data partitions in parallel using wildcard path
+        logging.info("All ranks reading UVW data from %s in parallel", args.store)
+        # The variable pattern "MAIN_*/UVW" instructs ht.load to find all directories
+        # matching MAIN_*, load the UVW array from each, and concatenate them
+        # along the specified split axis (0, the row axis).
+        ht_uvw = ht.load(args.store, variable="MAIN_*/UVW", split=0)
+
+        logging.info(f"Rank {ht_uvw.comm.rank}: UVW local shape: {ht_uvw.lshape}, global shape: {ht_uvw.gshape}")
+
+        # TODO: Implement Heat-based wsclean_predict kernel
+        raise NotImplementedError("Heat data ingestion complete. Computation not yet implemented.")
+
     else:
         raise ValueError(f"Unknown backend: {backend}")
+    
+
