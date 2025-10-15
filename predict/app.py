@@ -110,6 +110,8 @@ class Application:
         p.add_argument("--optimize-graph", action="store_true", default=False)
         p.add_argument("--plugin", choices=["none", "pinned", "autorestrictor"],
                        default="none")
+        p.add_argument("--backend", choices=["dask", "heat"],
+                       default="dask", help="Computational backend to use.")
 
         args = p.parse_args(args)
 
@@ -189,7 +191,7 @@ class Application:
             logging.info("Predicting Visibilities")
             logging.info("Storing report at %s", self.args.report_prefix)
             stack.enter_context(performance_report(self.args.report_prefix))
-            predict_vis(self.args, model)
+            predict_vis(self.args, model, backend=self.args.backend)
             logging.info("Done")
 
 
