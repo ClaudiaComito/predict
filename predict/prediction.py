@@ -35,6 +35,7 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel):
     client = get_client()
     nchan = args.dimensions["chan"]
     chan_chunks = args.chunks["chan"]
+    schunks = args.chunks["source"]
 
     store = DaskMSStore(args.store)
     kw = {"group_cols": "__row__"} if store.type() == "casa" else {}
@@ -84,6 +85,14 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel):
             log_poly = sky_model.log_poly
             ref_freq = sky_model.ref_freq
             gauss_shape = sky_model.gauss_shape
+            # Ingest numpy sky model arrays into dask, chunking along source dim
+            radec = da.from_array(sky_model.radec, chunks=(schunks, 2))
+            source_type = da.from_array(sky_model.source_type, chunks=schunks)
+            flux = da.from_array(sky_model.flux, chunks=schunks)
+            spi = da.from_array(sky_model.spi, chunks=schunks)
+            log_poly = da.from_array(sky_model.log_poly, chunks=schunks)
+            ref_freq = da.from_array(sky_model.ref_freq, chunks=schunks)
+            gauss_shape = da.from_array(sky_model.gauss_shape, chunks=schunks)
 
             lm = radec_to_lm(radec, field.PHASE_DIR.values[0][0])
 
