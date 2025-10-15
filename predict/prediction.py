@@ -20,6 +20,8 @@ import logging
 from predict.sky_model import WSCleanModel
 
 import heat as ht
+from predict.heat_kernels import heat_radec_to_lm, heat_wsclean_predict
+
 
 
 def expand_vis(vis, corrs):
@@ -159,8 +161,27 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
 
         logging.info(f"Rank {ht_uvw.comm.rank}: UVW local shape: {ht_uvw.lshape}, global shape: {ht_uvw.gshape}")
 
-        # TODO: Implement Heat-based wsclean_predict kernel
-        raise NotImplementedError("Heat data ingestion complete. Computation not yet implemented.")
+        # In this particular example, we know we have a single FIELD and DATA_DESCRIPTION for all MAIN_* partitions.
+        field_ds = xds_from_storage_table(f"{args.store}::FIELD").compute()
+        phase_dir = field_ds[0].PHASE_DIR.values[0][0]
+
+        # Create frequency array
+       nchan = args.dimensions["chan"]
+       ht_frequency = ht.linspace(0.856e9, 2 * 0.856e9, nchan, split=None)
+
+       # Convert radec to lm coordinates
+       ht_lm = heat_radec_to_lm(ht_radec, phase_dir)
+
+       # Call the Heat prediction kernel
+       logging.info("Starting Heat visibility prediction...")
+       ht_vis = heat_wsclean_predict(ht_uvw, ht_lm, ht_source_type, ht_flux, ht_spi, 
+                                     ht_log_poly, ht_ref_freq, ht_gauss_shape, ht_frequency)
+
+       # Save the resulting distributed tensor to a Zarr store
+       logging.info("Computation complete. Writing output to %s", args.output_store)
+       ht_vis.save(args.output_store, overwrite=True)
+       ht_vis.comm.Barrier()
+       logging.info("Output successfully written.")
 
     else:
         raise ValueError(f"Unknown backend: {backend}")
