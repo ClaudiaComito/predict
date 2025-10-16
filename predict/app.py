@@ -85,7 +85,7 @@ class Application:
     def parse_args(args: Iterable[str]) -> argparse.Namespace:
         p = argparse.ArgumentParser()
         p.add_argument("store", help="Measurement Set store")
-        p.add_argument("--output-store", required=True, type=DaskMSStore)
+        p.add_argument("--output-store", required=True, type=str)
         p.add_argument("--output-column", default="MODEL_DATA")
         p.add_argument("--address", help="distributed scheduler address")
         p.add_argument(
@@ -115,9 +115,6 @@ class Application:
 
         args = p.parse_args(args)
 
-        if args.output_store.exists():
-            logging.warning("Removing existing output store %s", args.output_store)
-            args.output_store.rm(recursive=True)
         args.dimensions.setdefault("chan", Application.DEFAULT_CHANS)
         args.dimensions.setdefault("source", Application.DEFAULT_SOURCES)
 
@@ -155,6 +152,12 @@ class Application:
     def run(self):
         with ExitStack() as stack:
             if self.args.backend == "dask":
+                store = DaskMSStore(args.output_store)
+                if store.exists():
+                    logging.warning("Removing existing output store %s", store)
+                    store.rm(recursive=True)
+                args.output_store = store
+
                 logging.info("dask configuration")
                 logging.info(pformat(dask.config.config))
                 stack.enter_context(
