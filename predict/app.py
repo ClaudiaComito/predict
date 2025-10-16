@@ -112,6 +112,8 @@ class Application:
                        default="none")
         p.add_argument("--backend", choices=["dask", "heat"],
                        default="dask", help="Computational backend to use.")
+        p.add_argument("--device", choices=["cpu", "gpu"], default="cpu",
+                        help="Compute device for the Heat backend.")
 
         args = p.parse_args(args)
 
