@@ -140,8 +140,9 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         dask.compute(write, sync=True, optimize_graph=args.optimize_graph)
     
     elif backend == "heat":
-        logging.info("Heat backend selected.")
+        logging.info(f"Heat backend selected on device {args.device}.")
         # TODO: Implement Heat-based visibility prediction
+        ht.devices.use_device(args.device)
 
         # Ingest sky model and replicate on all processes (split=None)
         ht_source_type = ht.array(sky_model.source_type, split=None)
@@ -153,34 +154,36 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         ht_gauss_shape = ht.array(sky_model.gauss_shape, split=None)
 
         # Read all UVW data partitions in parallel using wildcard path
-        logging.info("All ranks reading UVW data from %s in parallel", args.store)
+
         # The variable pattern "MAIN_*/UVW" instructs ht.load to find all directories
         # matching MAIN_*, load the UVW array from each, and concatenate them
         # along the specified split axis (0, the row axis).
-        ht_uvw = ht.load(args.store, variable="MAIN_*/UVW", split=0)
-
-        logging.info(f"Rank {ht_uvw.comm.rank}: UVW local shape: {ht_uvw.lshape}, global shape: {ht_uvw.gshape}")
+        ht_uvw = ht.load(args.store, variable="MAIN_*/UVW", split=0, dtype=ht.float32)
 
         # In this particular example, we know we have a single FIELD and DATA_DESCRIPTION for all MAIN_* partitions.
         field_ds = xds_from_storage_table(f"{args.store}::FIELD")[0].compute()
-        phase_dir = field_ds.PHASE_DIR.values[0][0]
+        ht_phase_dir = ht.array(field_ds.PHASE_DIR.values[0][0], dtype=ht.float32, split=None)
 
         # Create frequency array
         nchan = args.dimensions["chan"]
-        ht_frequency = ht.linspace(0.856e9, 2 * 0.856e9, nchan, split=None)
+        ht_frequency = ht.linspace(0.856e9, 2 * 0.856e9, nchan, dtype=ht.float32, split=None)
+
+        # Get batch sizes from the chunks argument
+        source_batch_size = args.chunks["source"]
+        chan_batch_size = args.chunks["chan"]
 
         # Convert radec to lm coordinates
-        ht_lm = heat_radec_to_lm(ht_radec, phase_dir)
+        ht_lm = heat_radec_to_lm(ht_radec, ht_phase_dir)
 
         # Call the Heat prediction kernel
-        logging.info("Starting Heat visibility prediction...")
         ht_vis = heat_wsclean_predict(ht_uvw, ht_lm, ht_source_type, ht_flux, ht_spi, 
-                                        ht_log_poly, ht_ref_freq, ht_gauss_shape, ht_frequency)
+                                        ht_log_poly, ht_ref_freq, ht_gauss_shape, ht_frequency,
+                                        source_batch_size=source_batch_size,
+                                        chan_batch_size=chan_batch_size)
 
         # Save the resulting distributed tensor to a Zarr store
         logging.info("Computation complete. Writing output to %s", args.output_store)
         ht_vis.save(args.output_store, overwrite=True)
-        ht_vis.comm.Barrier()
         logging.info("Output successfully written.")
 
     else:
