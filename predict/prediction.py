@@ -19,10 +19,6 @@ from predict.annotations import annotate_datasets, dim_propagator
 import logging
 from predict.sky_model import WSCleanModel
 
-import heat as ht
-from predict.heat_kernels import heat_radec_to_lm, heat_wsclean_predict
-
-
 
 def expand_vis(vis, corrs):
     if corrs == 1:
@@ -140,6 +136,10 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         dask.compute(write, sync=True, optimize_graph=args.optimize_graph)
     
     elif backend == "heat":
+
+        import heat as ht
+        from predict.heat_kernels import heat_radec_to_lm, heat_wsclean_predict
+
         logging.info(f"Heat backend selected on device {args.device}.")
         # TODO: Implement Heat-based visibility prediction
         ht.devices.use_device(args.device)
