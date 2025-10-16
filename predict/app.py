@@ -154,11 +154,11 @@ class Application:
     def run(self):
         with ExitStack() as stack:
             if self.args.backend == "dask":
-                store = DaskMSStore(args.output_store)
+                store = DaskMSStore(self.args.output_store)
                 if store.exists():
                     logging.warning("Removing existing output store %s", store)
                     store.rm(recursive=True)
-                args.output_store = store
+                self.args.output_store = store
 
                 logging.info("dask configuration")
                 logging.info(pformat(dask.config.config))
