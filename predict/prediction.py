@@ -19,6 +19,9 @@ from predict.annotations import annotate_datasets, dim_propagator
 import logging
 from predict.sky_model import WSCleanModel
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 def expand_vis(vis, corrs):
     if corrs == 1:
@@ -89,7 +92,9 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
                 gauss_shape = sky_model.gauss_shape
                 # Ingest numpy sky model arrays into dask, chunking along source dim
                 radec = da.from_array(sky_model.radec, chunks=(schunks, 2))
-                source_type = da.from_array(sky_model.source_type, chunks=schunks)
+                # convert integer source type to "POINT" or "GAUSSIAN"
+                source_type_int = da.from_array(sky_model.source_type, chunks=schunks)
+                source_type = da.where(source_type_int == 1, "GAUSS", "POINT").astype("<U5")
                 flux = da.from_array(sky_model.flux, chunks=schunks)
                 spi = da.from_array(sky_model.spi, chunks=schunks)
                 log_poly = da.from_array(sky_model.log_poly, chunks=schunks)
@@ -141,7 +146,6 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         from predict.heat_kernels import heat_radec_to_lm, heat_wsclean_predict
 
         logging.info(f"Heat backend selected on device {args.device}.")
-        # TODO: Implement Heat-based visibility prediction
         ht.devices.use_device(args.device)
 
         # Ingest sky model and replicate on all processes (split=None)
