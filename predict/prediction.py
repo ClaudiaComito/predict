@@ -19,6 +19,7 @@ from predict.annotations import annotate_datasets, dim_propagator
 import logging
 from predict.sky_model import WSCleanModel
 
+import numpy as np
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -81,7 +82,7 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
                 pol = pol_ds[ddid.POLARIZATION_ID.values[0]]
 
                 with dask.annotate(dims=("chan",)):
-                    frequency = da.linspace(0.856e9, 2 * 0.856e9, nchan, chunks=chan_chunks)
+                    frequency = da.linspace(0.856e9, 2 * 0.856e9, nchan, chunks=chan_chunks, dtype=np.float32)
 
                 radec = sky_model.radec
                 source_type = sky_model.source_type
@@ -91,15 +92,15 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
                 ref_freq = sky_model.ref_freq
                 gauss_shape = sky_model.gauss_shape
                 # Ingest numpy sky model arrays into dask, chunking along source dim
-                radec = da.from_array(sky_model.radec, chunks=(schunks, 2))
+                radec = da.from_array(sky_model.radec.astype(np.float32), chunks=(schunks, 2))
                 # convert integer source type to "POINT" or "GAUSSIAN"
                 source_type_int = da.from_array(sky_model.source_type, chunks=schunks)
                 source_type = da.where(source_type_int == 1, "GAUSS", "POINT").astype("<U5")
-                flux = da.from_array(sky_model.flux, chunks=schunks)
-                spi = da.from_array(sky_model.spi, chunks=schunks)
+                flux = da.from_array(sky_model.flux.astype(np.float32), chunks=schunks)
+                spi = da.from_array(sky_model.spi.astype(np.float32), chunks=schunks)
                 log_poly = da.from_array(sky_model.log_poly, chunks=schunks)
-                ref_freq = da.from_array(sky_model.ref_freq, chunks=schunks)
-                gauss_shape = da.from_array(sky_model.gauss_shape, chunks=schunks)
+                ref_freq = da.from_array(sky_model.ref_freq.astype(np.float32), chunks=schunks)
+                gauss_shape = da.from_array(sky_model.gauss_shape.astype(np.float32), chunks=schunks)
 
                 lm = radec_to_lm(radec, field.PHASE_DIR.values[0][0])
 
@@ -109,8 +110,8 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
                     warnings.simplefilter("ignore", category=da.PerformanceWarning)
 
                     vis = wsclean_predict(
-                        ds.UVW.data,
-                        lm,
+                        ds.UVW.data.astype(np.float32),
+                        lm.astype(np.float32),
                         source_type,
                         flux,
                         spi,
@@ -149,13 +150,13 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         ht.devices.use_device(args.device)
 
         # Ingest sky model and replicate on all processes (split=None)
-        ht_source_type = ht.array(sky_model.source_type, split=None)
-        ht_radec = ht.array(sky_model.radec, split=None)
-        ht_flux = ht.array(sky_model.flux, split=None)
-        ht_spi = ht.array(sky_model.spi, split=None)
-        ht_ref_freq = ht.array(sky_model.ref_freq, split=None)
+        ht_source_type = ht.array(sky_model.source_type, split=None )
+        ht_radec = ht.array(sky_model.radec, split=None, dtype=ht.float32)
+        ht_flux = ht.array(sky_model.flux, split=None, dtype=ht.float32)
+        ht_spi = ht.array(sky_model.spi, split=None, dtype=ht.float32)
+        ht_ref_freq = ht.array(sky_model.ref_freq, split=None, dtype=ht.float32)
         ht_log_poly = ht.array(sky_model.log_poly, split=None)
-        ht_gauss_shape = ht.array(sky_model.gauss_shape, split=None)
+        ht_gauss_shape = ht.array(sky_model.gauss_shape, split=None, dtype=ht.float32)
 
         # Read all UVW data partitions in parallel using wildcard path
 
