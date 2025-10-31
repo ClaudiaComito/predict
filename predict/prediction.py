@@ -24,6 +24,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+import time
+import perun
+
 def expand_vis(vis, corrs):
     if corrs == 1:
         return vis
@@ -34,8 +37,7 @@ def expand_vis(vis, corrs):
         return da.concatenate([vis, zeros, zeros, vis], axis=2).rechunk({2: corrs})
     else:
         raise ValueError(f"MS Correlations {corrs} not in (1, 2, 4)")
-
-
+    
 def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str):
     if backend == "dask":
         client = get_client()
@@ -181,15 +183,22 @@ def predict_vis(args: argparse.Namespace, sky_model: WSCleanModel, backend: str)
         ht_lm = heat_radec_to_lm(ht_radec, ht_phase_dir)
 
         # Call the Heat prediction kernel
+        start = time.perf_counter()
         ht_vis = heat_wsclean_predict(ht_uvw, ht_lm, ht_source_type, ht_flux, ht_spi, 
                                         ht_log_poly, ht_ref_freq, ht_gauss_shape, ht_frequency,
                                         source_batch_size=source_batch_size,
                                         chan_batch_size=chan_batch_size)
+        end = time.perf_counter()
+        logging.info("Heat distributed prediction complete in %.2f seconds.", end - start)
 
         # Save the resulting distributed tensor to a Zarr store
         logging.info("Computation complete. Writing output to %s", args.output_store)
-        ht_vis.save(args.output_store, overwrite=True)
+        #ht_vis.save(args.output_store, overwrite=True)
+        start = time.perf_counter()
+        ht.save_zarr_group(ht_vis, path=args.output_store, variable_pattern="MAIN_{rank}/MODEL_DATA", overwrite=True)
+        end = time.perf_counter()
         logging.info("Output successfully written.")
+        logging.info("Time taken to write output: %.2f seconds", end - start)
 
     else:
         raise ValueError(f"Unknown backend: {backend}")
