@@ -14,7 +14,7 @@ This is Work In Progress.
 
 ## Key Changes
 
-The Heat backend represents a shift from a task-based, lazy-evaluation model to a data-parallel, eager-execution strategy designed for high-performance computing (HPC) environments.
+The Heat backend shifts from a task-based, lazy-evaluation model to a data-parallel, eager-execution strategy designed for high-performance computing (HPC) environments.
 
 ### 1. Backend and device selection
 * Users can toggle between the original `dask` implementation and the new `heat` implementation via the `--backend` command-line argument.
