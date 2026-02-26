@@ -2,7 +2,7 @@
 
 This branch introduces a new computational backend for the `predict` visibility benchmark, utilizing the **[Heat](https://github.com/helmholtz-analytics/heat) framework**.
 
-The primary goal of this backend is to replace the Dask-based computation with an MPI-based implementation, enabling efficient execution on large-scale HPC systems and offloading the core computation to **GPUs**.
+The primary goal of this backend is to provide an alternative MPI-based implementation, enabling efficient execution on large-scale HPC systems and offloading the core computation to **GPUs**.
 
 ---
 
