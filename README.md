@@ -1,12 +1,12 @@
-# README: Heat Backend for `predict` Benchmark
+# README: Heat backend for `predict` benchmark
 
 This repository introduces a computational backend for the `predict` visibility benchmark using the **[Heat](https://github.com/helmholtz-analytics/heat) framework**. 
 
 
 The Heat backend is an experimental implementation designed to:
-* **Evaluate Scalability**: Test the performance and scaling of a purely data-parallel (MPI-based) approach compared to Dask's task-graph scheduling.
-* **Enable GPU Portability**: Leverage PyTorch-backed tensors to easily offload core interferometry kernels to GPUs with minimal code changes.
-* **Optimize High-Performance I/O**: Utilize MPI-parallelized reads for Zarr datasets across large HPC clusters.
+* **Evaluate scalability**: Test the performance and scaling of a purely data-parallel (MPI-based) approach compared to Dask's task-graph scheduling.
+* **Enable GPU support**: Leverage PyTorch-backed tensors to easily offload core interferometry kernels to GPUs with minimal code changes.
+* **Optimize high-performance I/O**: Utilize MPI-parallelized reads for Zarr datasets across large HPC clusters.
 
 This is Work In Progress.
 
@@ -40,19 +40,19 @@ The Heat backend shifts from a task-based, lazy-evaluation model to a data-paral
 
 Unlike the Dask version, the Heat backend is executed using `mpirun` or a cluster-specific job launcher (e.g., `srun`). A sample sbatch script is provided in `run_heat_benchmark_example.sh`. You need to adapt the module loading and environment setup to your specific HPC system.
 
-### 1. Data Prerequisites
+### 1. Data prerequisites
 
 This backend is designed to work with the Zarr dataset structure created by `dask-ms`, where the main data is partitioned into sub-directories (e.g., `MAIN_0`, `MAIN_1`, ...).
 
 The parallel I/O in the Heat backend loads the UVW data from all these partitions in parallel on the available devices (loading a zarr group with `variable="MAIN_*/UVW"`).
 
-### 2. Running the Benchmark
+### 2. Running the benchmark
 
 The `run_heat_benchmark.sh` script provides an example of how to run the `predict` benchmark with the Heat backend on an HPC system (tested on JUWELS Booster).
 
 Execute the application using `sbatch <script>`. The arguments are the same as the Dask version, but you must add `--backend heat` and (optionally) `--device gpu`. 
 
-### 3. Argument Interpretation
+### 3. Argument interpretation
 
 * `--backend heat`: Activates the Heat backend.
 * `--device gpu`: Instructs Heat to use the GPUs for all computations.
@@ -62,7 +62,7 @@ Execute the application using `sbatch <script>`. The arguments are the same as t
 
 ---
 
-## Implementation Details
+## Implementation details
 
 ### Parallel I/O
 
@@ -74,7 +74,7 @@ ht_uvw = ht.load(args.store, variable="MAIN_*/UVW", split=0)
 
 This allows all MPI ranks to participate in I/O, avoiding a "rank 0 reads" bottleneck. Sky model and metadata are replicated on all ranks (`split=None`).
 
-### heat_wsclean_predict Kernel
+### `heat_wsclean_predict` kernel
 
 The core prediction kernel, `heat_wsclean_predict`, is designed to avoid materializing the massive `(row, source, chan)` intermediate tensor.
 
