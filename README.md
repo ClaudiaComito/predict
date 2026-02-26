@@ -1,25 +1,40 @@
 # README: Heat Backend for `predict` Benchmark
 
-This branch introduces a new computational backend for the `predict` visibility benchmark, utilizing the **[Heat](https://github.com/helmholtz-analytics/heat) framework**.
+This repository introduces a computational backend for the `predict` visibility benchmark using the **[Heat](https://github.com/helmholtz-analytics/heat) framework**. 
 
-The primary goal of this backend is to provide an alternative MPI-based implementation, enabling efficient execution on large-scale HPC systems and offloading the core computation to **GPUs**.
+
+The Heat backend is an experimental implementation designed to:
+* **Evaluate Scalability**: Test the performance and scaling of a purely data-parallel (MPI-based) approach compared to Dask's task-graph scheduling.
+* **Enable GPU Portability**: Leverage PyTorch-backed tensors to easily offload core interferometry kernels to GPUs with minimal code changes.
+* **Optimize High-Performance I/O**: Utilize MPI-parallelized reads for Zarr datasets across large HPC clusters.
+
+This is Work In Progress.
 
 ---
 
 ## Key Changes
 
-1.  **New Backend Selection:**
-    * `app.py` introduces two new command-line arguments:
-        * `--backend`: Allows choosing between `dask` (default) and `heat`.
-        * `--device`: Allows selecting `cpu` (default) or `gpu` when using the Heat backend.
-    * When `--backend heat` is selected, `app.py` **bypasses all Dask and Dask.distributed setup**.
-    * No `LocalCluster` or `Client` is created. The script runs as a standard MPI application, and Heat handles the distributed communication.
+The Heat backend represents a shift from a task-based, lazy-evaluation model to a data-parallel, eager-execution strategy designed for high-performance computing (HPC) environments.
 
-2.  **Heat-Native Compute Kernel:**
-    * A new file, `heat_kernels.py`, has been added. This file contains the Heat/PyTorch implementations of the core prediction algorithm.
-    * `prediction.py` contains a new `elif backend == "heat":` block that orchestrates the Heat-based workflow.
+### 1. Backend and device selection
+* Users can toggle between the original `dask` implementation and the new `heat` implementation via the `--backend` command-line argument.
+* A new `--device` argument allows the Heat backend to target either `cpu` or `gpu`. When `gpu` is selected, core visibility calculations are offloaded to hardware accelerators using PyTorch-backed tensors.
+* When the Heat backend is active, the application bypasses all `LocalCluster` or `Client` setup, running instead as a standard MPI application.
 
----
+### 2. Implementation of JIT-Compiled kernels
+* A new file, `heat_kernels.py`, has been added. This file contains the Heat/PyTorch implementations of the core prediction algorithm.
+* The Heat backend uses JIT-compiled PyTorch kernels (`_local_predict_kernel`) to execute the double-batching logic directly on the compute device.
+* The spectral model calculation has been ported from a CPU-bound NumPy implementation to a fully vectorized `torch_spectra` kernel. This calculates complex spectral models directly on the target device, eliminating host-to-device transfer bottlenecks.
+
+### 3. Distributed Orchestration and I/O
+* The Heat backend replaces Dask’s dynamic task scheduling with a bulk-synchronous MPI approach where Heat handles distributed communication.
+* To prevent I/O bottlenecks, the Heat backend uses parallel wildcard loading (`MAIN_*/UVW`). This allows every MPI rank to read its own data partition from the Zarr store simultaneously.
+
+
+### 4. Memory management
+* In Dask mode, the `--chunks` argument defines the granularity of the lazy task graph.
+* In Heat mode, these same values are re-purposed as **batch sizes** (`source_batch_size` and `chan_batch_size`) to prevent out-of-memory (OOM) errors both on GPUs and CPUs, by controlling the memory footprint of internal loops.
+
 
 ## Usage
 
@@ -45,18 +60,15 @@ Execute the application using `sbatch <script>`. The arguments are the same as t
     * `chunks["source"]`: Sets the `source_batch_size`.
     * `chunks["chan"]`: Sets the `chan_batch_size`.
 
-
 ---
 
 ## Implementation Details
 
 ### Parallel I/O
 
-The Heat backend performs a scalable, parallel read of the input data. It uses Heat's wildcard loading capability (NB: development branch, will be released with 1.6.1) to find all `MAIN_*` partitions and load the `UVW` array from each one:
+The Heat backend performs a scalable, parallel read of the input data. It uses Heat's wildcard loading capability to find all `MAIN_*` partitions and load the `UVW` array from each one:
 
 ```python
-# Loads all UVW arrays from MAIN_*/UVW and concatenates them
-# along the 'row' axis (split=0)
 ht_uvw = ht.load(args.store, variable="MAIN_*/UVW", split=0)
 ```
 
@@ -66,17 +78,5 @@ This allows all MPI ranks to participate in I/O, avoiding a "rank 0 reads" bottl
 
 The core prediction kernel, `heat_wsclean_predict`, is designed to avoid materializing the massive `(row, source, chan)` intermediate tensor.
 
-It uses a **double-batching strategy** by looping over both the `source` and `chan` dimensions in small chunks. This keeps the peak memory footprint low, allowing the computation to fit on the device.
+It uses a double-batching strategy by looping over both the `source` and `chan` dimensions in small chunks. This keeps the peak memory footprint low, allowing the computation to fit on the device.
 
-### Hybrid CPU/GPU Kernel
-
-The core `heat_wsclean_predict` kernel operates on local PyTorch tensors. However, the spectral model calculation is a codex-africanus implementation and is still performed on the **CPU using NumPy** inside the loop. The result is then copied back to the GPU for the main computation.
-
-```python
-# This calculation runs on CPU
-spectrum_local = torch.tensor(np_spectra(flux.larray.cpu().numpy(), ...))
-# Result is moved back to the compute device
-spectrum_local = spectrum_local.to(phase_local.device)
-```
-
-This is a known performance bottleneck, and a future optimization would be to port `np_spectra` to a pure Torch implementation.
